@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["Auto Tag"]
+    types:
+      - completed
+
+jobs:
+  build-and-release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          git fetch --tags
+          latest_tag=$(git tag --sort=-v:refname | head -n1)
+          echo "latest_tag=$latest_tag" >> $GITHUB_ENV
+          echo "Latest tag: $latest_tag"
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.26'
+
+      - name: Create build directories
+        run: mkdir -p build
+
+      - name: Build Linux amd64
+        run: GOOS=linux GOARCH=amd64 go build -o build/rget-linux-amd64 ./cmd
+
+      - name: Build macOS arm64
+        run: GOOS=darwin GOARCH=arm64 go build -o build/rget-darwin-arm64 ./cmd
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ env.latest_tag }}
+          release_name: Release ${{ env.latest_tag }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload linux amd64
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/rget-linux-amd64
+          asset_name: rget-linux-amd64
+          asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS arm64
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: build/rget-darwin-arm64
+          asset_name: rget-darwin-arm64
+          asset_content_type: application/octet-stream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
